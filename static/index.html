@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MailGuard AI — Email Threat Intelligence</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <!-- Chart.js from CDN (pinned version for reproducibility) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     TOP NAVIGATION BAR
+═══════════════════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <span class="brand-icon">🛡</span>
+    <span class="brand-name">MailGuard <span class="brand-ai">AI</span></span>
+    <span class="brand-tag">Email Threat Intelligence</span>
+  </div>
+
+  <nav class="topbar-nav" id="main-nav">
+    <a href="#analyze"   class="nav-link" data-page="analyze">
+      <span class="nav-icon">🔍</span> Analyze
+    </a>
+    <a href="#dashboard" class="nav-link" data-page="dashboard">
+      <span class="nav-icon">📊</span> Dashboard
+    </a>
+    <a href="#reports"   class="nav-link" data-page="reports">
+      <span class="nav-icon">📋</span> Reports
+    </a>
+    <a href="#about"     class="nav-link" data-page="about">
+      <span class="nav-icon">ℹ</span> About
+    </a>
+  </nav>
+
+  <div class="topbar-status" id="health-indicator">
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text">Connecting…</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════
+     PAGE CONTAINER — JS inserts page HTML here
+═══════════════════════════════════════════════════════ -->
+<main id="app-root">
+  <div class="loading-splash">
+    <div class="spinner-ring"></div>
+    <p>Loading MailGuard AI…</p>
+  </div>
+</main>
+
+<!-- ═══════════════════════════════════════════════════════
+     TOAST NOTIFICATION AREA
+═══════════════════════════════════════════════════════ -->
+<div id="toast-container" aria-live="polite"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════════════════ -->
+<script src="/static/js/app.js"></script>
+<script src="/static/js/analyze.js"></script>
+<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/reports.js"></script>
+<script src="/static/js/report.js"></script>
+<script src="/static/js/about.js"></script>
+
+</body>
+</html>
