@@ -28,6 +28,7 @@ except ImportError:
 import db
 from detector import ThreatDetector
 from geo import get_geolocation
+from threat_intel import threat_intel
 from models import (
     AnalyzeRequest, AnalyzeResponse, BreakdownModel, CheckItem,
     DashboardStats, EmailSummary, ForensicsInfo, GeoInfo,
@@ -181,6 +182,29 @@ def analyze(req: AnalyzeRequest):
 
     # Geolocation
     geo = get_geolocation(req.sender_ip or "")
+
+    # Threat Intelligence evaluation
+    urls_found = result["forensics"].get("urls_found", [])
+    intel_result = threat_intel.evaluate_email(
+        from_address = req.from_address or "",
+        reply_to     = req.reply_to     or "",
+        sender_ip    = req.sender_ip    or "",
+        urls         = urls_found,
+        attachments  = [],
+    )
+
+    # Sender reputation derived from threat intel
+    sender_reputation = _derive_sender_reputation(
+        req.from_address or "", req.sender_ip or "", intel_result
+    )
+
+    # Language/Social Engineering analysis (extracted from content analysis)
+    language_analysis = _extract_language_analysis(result)
+
+    # Enrich forensics with threat intel and language analysis
+    result["forensics"]["threat_intel"]       = intel_result
+    result["forensics"]["sender_reputation"]  = sender_reputation
+    result["forensics"]["language_analysis"]  = language_analysis
 
     # Build forensic timeline
     timeline = _build_timeline(result, req)
@@ -699,9 +723,361 @@ def reports(limit: int = 50, offset: int = 0):
     return db.list_emails(limit=limit, offset=offset)
 
 
+# ── Sender Reputation ────────────────────────────────────────────────────────
+
+@app.post("/api/sender/reputation", tags=["Analysis"])
+def sender_reputation(body: dict):
+    """
+    Look up sender reputation for a domain or IP address.
+    Send: {"from_address": "...", "sender_ip": "...", "reply_to": "..."}
+    """
+    from_address = (body.get("from_address") or "").strip()
+    sender_ip    = (body.get("sender_ip")    or "").strip()
+    reply_to     = (body.get("reply_to")     or "").strip()
+
+    intel_result = threat_intel.evaluate_email(
+        from_address=from_address,
+        reply_to=reply_to,
+        sender_ip=sender_ip,
+        urls=[],
+        attachments=[],
+    )
+
+    reputation_result = _derive_sender_reputation(from_address, sender_ip, intel_result)
+    reputation_result["from_address"] = from_address
+    reputation_result["sender_ip"]    = sender_ip
+    reputation_result["intel"]        = intel_result
+    reputation_result["timestamp"]    = datetime.now(timezone.utc).isoformat()
+    return reputation_result
+
+
+# ── Campaign Correlation ──────────────────────────────────────────────────────
+
+@app.get("/api/campaign/correlate", tags=["Intelligence"])
+def campaign_correlate():
+    """
+    Detect possible email campaigns by correlating indicators across analysed emails.
+    Groups emails by shared domains, URL patterns, and subject similarity.
+    """
+    all_emails = db.list_emails(limit=200, offset=0)
+    threats = [e for e in all_emails if e.get("verdict", "SAFE") != "SAFE"]
+
+    # Group by sender domain
+    domain_re = re.compile(r"@([a-zA-Z0-9.\-]+)")
+    domain_groups: Dict[str, List[dict]] = {}
+    for email in threats:
+        m = domain_re.search(email.get("from_address", ""))
+        if m:
+            domain = m.group(1).lower().strip(">\"' ")
+            if domain not in domain_groups:
+                domain_groups[domain] = []
+            domain_groups[domain].append(email)
+
+    campaigns = []
+    campaign_counter = 1
+    for domain, group in domain_groups.items():
+        if len(group) >= 2:
+            verdicts = [e["verdict"] for e in group]
+            scores = [e["score"] for e in group]
+            avg_score = round(sum(scores) / len(scores))
+            confidence = min(95, 50 + len(group) * 10)
+
+            campaigns.append({
+                "campaign_id": f"MG-CAMP-{campaign_counter:03d}",
+                "indicator_type": "DOMAIN",
+                "indicator_value": domain,
+                "email_count": len(group),
+                "emails": [{"id": e["id"], "subject": e["subject"][:60], "verdict": e["verdict"]} for e in group[:5]],
+                "verdicts": list(set(verdicts)),
+                "avg_score": avg_score,
+                "confidence": confidence,
+                "description": f"Multiple threat emails sharing sender domain '{domain}'",
+                "analysis_note": "CORRELATION — Not confirmed attribution. Based on shared infrastructure indicators.",
+            })
+            campaign_counter += 1
+
+    return {
+        "total_campaigns": len(campaigns),
+        "campaigns": campaigns,
+        "analysis_scope": len(threats),
+        "note": "Campaign detection uses heuristic indicator correlation. This is NOT confirmed threat attribution.",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ── Email Parse ───────────────────────────────────────────────────────────────
+
+@app.post("/api/email/parse", tags=["Analysis"])
+def email_parse(body: dict):
+    """
+    Parse raw email headers and extract structured fields.
+    Send: {"headers": "...", "from_address": "...", "body": "..."}
+    """
+    from detector import _extract_domain, _extract_display_name, _extract_urls, _count_received_hops, _parse_auth_result
+
+    headers      = (body.get("headers")      or "").strip()
+    from_address = (body.get("from_address") or "").strip()
+    reply_to     = (body.get("reply_to")     or "").strip()
+    email_body   = (body.get("body")         or "").strip()
+    subject      = (body.get("subject")      or "").strip()
+
+    from_domain     = _extract_domain(from_address)
+    rt_domain       = _extract_domain(reply_to)
+    display_name    = _extract_display_name(from_address)
+    hops            = _count_received_hops(headers)
+    urls            = _extract_urls(f"{subject} {email_body}")
+
+    spf   = _parse_auth_result(headers, "spf")   if headers else "unknown"
+    dkim  = _parse_auth_result(headers, "dkim")  if headers else "unknown"
+    dmarc = _parse_auth_result(headers, "dmarc") if headers else "unknown"
+
+    # Extract originating IP from Received headers
+    ip_pattern = re.compile(r"Received:.*?\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]", re.IGNORECASE)
+    ips_found = ip_pattern.findall(headers or "")
+    originating_ip = ips_found[0] if ips_found else ""
+
+    return {
+        "parsed_fields": {
+            "from_address":   from_address,
+            "from_domain":    from_domain,
+            "display_name":   display_name,
+            "reply_to":       reply_to,
+            "reply_to_domain": rt_domain,
+            "subject":        subject,
+            "originating_ip": originating_ip,
+        },
+        "authentication": {
+            "spf":   spf,
+            "dkim":  dkim,
+            "dmarc": dmarc,
+        },
+        "header_analysis": {
+            "received_hops":   hops,
+            "domain_mismatch": bool(from_domain and rt_domain and from_domain != rt_domain),
+        },
+        "urls_found":   urls[:30],
+        "url_count":    len(urls),
+        "analysis_type": "STATIC_PARSE",
+        "timestamp":    datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ── Behaviour Analysis ────────────────────────────────────────────────────────
+
+@app.post("/api/behavior/analyze", tags=["Analysis"])
+def behavior_analyze(body: dict):
+    """
+    Standalone behavioral analysis for an email.
+    Returns behavioral signals without full scoring.
+    """
+    from_address = (body.get("from_address") or "").strip()
+    reply_to     = (body.get("reply_to")     or "").strip()
+    subject      = (body.get("subject")      or "").strip()
+    email_body   = (body.get("body")         or "").strip()
+    headers      = (body.get("headers")      or "").strip()
+
+    signals = []
+    domain_re = re.compile(r"@([a-zA-Z0-9.\-]+)")
+    from_match = domain_re.search(from_address)
+    rt_match   = domain_re.search(reply_to)
+
+    from_domain = from_match.group(1).lower() if from_match else ""
+    rt_domain   = rt_match.group(1).lower() if rt_match else ""
+
+    if from_domain and rt_domain and from_domain != rt_domain:
+        signals.append({
+            "signal": "REPLY_TO_MISMATCH",
+            "level": "HIGH",
+            "detail": f"Reply-To domain '{rt_domain}' differs from sender domain '{from_domain}'",
+        })
+
+    if "to:" not in (headers or "").lower():
+        signals.append({
+            "signal": "MISSING_TO_HEADER",
+            "level": "MEDIUM",
+            "detail": "No To: header found — possible mass BCC distribution",
+        })
+
+    exec_words = ["ceo", "cfo", "cto", "president", "director", "managing director"]
+    body_lower = (subject + " " + email_body).lower()
+    if any(w in body_lower for w in exec_words):
+        signals.append({
+            "signal": "EXECUTIVE_REFERENCE",
+            "level": "MEDIUM",
+            "detail": "Email references executive role — potential impersonation or authority pressure",
+        })
+
+    conf_words = ["keep this confidential", "do not share", "between us", "do not mention"]
+    if any(w in body_lower for w in conf_words):
+        signals.append({
+            "signal": "CONFIDENTIALITY_PRESSURE",
+            "level": "HIGH",
+            "detail": "Email instructs recipient to keep content secret — social engineering indicator",
+        })
+
+    return {
+        "signals": signals,
+        "signal_count": len(signals),
+        "baseline_available": False,
+        "baseline_note": "Historical baseline unavailable — no stored communication history. Analysis based on current email signals only.",
+        "from_domain": from_domain,
+        "analysis_type": "HEURISTIC_SIGNALS",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ── Threat Intelligence Check ─────────────────────────────────────────────────
+
+@app.post("/api/threat-intelligence/check", tags=["Intelligence"])
+def threat_intelligence_check(body: dict):
+    """
+    Check an individual indicator (IP, domain, or URL) against threat intelligence.
+    Send: {"type": "ip"|"domain"|"url", "value": "..."}
+    """
+    indicator_type  = (body.get("type")  or "").strip().lower()
+    indicator_value = (body.get("value") or "").strip()
+
+    if not indicator_value:
+        raise HTTPException(status_code=400, detail="indicator value is required")
+
+    result = None
+    if indicator_type == "ip":
+        result = threat_intel.lookup_ip(indicator_value)
+    elif indicator_type == "domain":
+        result = threat_intel.lookup_domain(indicator_value)
+    elif indicator_type == "url":
+        result = threat_intel.lookup_url(indicator_value)
+    else:
+        raise HTTPException(status_code=400, detail="type must be 'ip', 'domain', or 'url'")
+
+    if result:
+        return {
+            "found": True,
+            "indicator": indicator_value,
+            "type": indicator_type,
+            "intelligence": result,
+            "source": "MailGuard Local IOC Database",
+            "external_providers": "NOT_CONFIGURED",
+            "note": "LOCAL INTELLIGENCE ONLY — External providers (VirusTotal, AlienVault, AbuseIPDB) not configured.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    else:
+        return {
+            "found": False,
+            "indicator": indicator_value,
+            "type": indicator_type,
+            "intelligence": None,
+            "source": "MailGuard Local IOC Database",
+            "external_providers": "NOT_CONFIGURED",
+            "note": "No match in local IOC database. External intelligence providers not configured.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+
 # ===========================================================================
 # Helper functions
 # ===========================================================================
+
+def _derive_sender_reputation(from_address: str, sender_ip: str, intel_result: dict) -> dict:
+    """
+    Derive sender reputation from available signals.
+    Returns structured reputation result with indicators and confidence.
+    """
+    indicators = []
+    reputation = "unknown"
+    confidence = 0
+
+    if intel_result.get("has_threats"):
+        ioc_hits = intel_result.get("ioc_hits", [])
+        for hit in ioc_hits:
+            if hit.get("type") in ("MALICIOUS_IP", "MALICIOUS_IP_SUBNET", "MALICIOUS_DOMAIN", "MALICIOUS_SUBDOMAIN"):
+                indicators.append({
+                    "indicator": hit.get("indicator", ""),
+                    "type": hit.get("type", ""),
+                    "detail": hit.get("description", ""),
+                    "severity": hit.get("severity", ""),
+                    "source": hit.get("source", "Local IOC DB"),
+                })
+
+        severity_levels = [h.get("severity", "LOW") for h in ioc_hits]
+        if "CRITICAL" in severity_levels:
+            reputation = "malicious"
+            confidence = 92
+        elif "HIGH" in severity_levels:
+            reputation = "suspicious"
+            confidence = 78
+        else:
+            reputation = "suspicious"
+            confidence = 60
+    elif sender_ip:
+        # No IOC hit but IP is public — unknown
+        reputation = "unknown"
+        confidence = 20
+        indicators.append({
+            "indicator": sender_ip,
+            "type": "IP",
+            "detail": "No known threat intelligence data for this IP.",
+            "severity": "UNKNOWN",
+            "source": "Local IOC DB",
+        })
+    else:
+        reputation = "unknown"
+        confidence = 0
+
+    return {
+        "reputation": reputation,
+        "confidence": confidence,
+        "indicators": indicators,
+        "sources": ["MailGuard Local IOC Database", "Anti-Squat Domain Watch", "High-Abuse TLD Monitor"],
+        "note": "LOCAL ANALYSIS — No external threat-intelligence provider configured. Reputation based on local IOC database only.",
+        "available": True,
+    }
+
+
+def _extract_language_analysis(result: dict) -> dict:
+    """
+    Extract language/social-engineering signals from the content analysis pillar.
+    Returns structured language analysis with detected categories and risk level.
+    """
+    breakdown = result.get("breakdown", {})
+    content = breakdown.get("content_analysis", {})
+    checks = content.get("checks", [])
+
+    urgency_detected = any("urgency" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+    credential_detected = any("credential" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+    financial_detected = any("financial" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+    impersonation_detected = any("impersonat" in c.get("name", "").lower() or "spoof" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+    tech_support_detected = any("tech support" in c.get("name", "").lower() or "fake invoice" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+    lottery_detected = any("lottery" in c.get("name", "").lower() or "prize" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+    extortion_detected = any("extortion" in c.get("name", "").lower() or "blackmail" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+    sensitive_info = any("sensitive" in c.get("name", "").lower() for c in checks if c.get("result") in ("fail", "warn"))
+
+    signals = []
+    if urgency_detected:      signals.append({"type": "URGENCY",            "level": "HIGH",   "detail": "Artificial urgency or threat of account suspension"})
+    if credential_detected:   signals.append({"type": "CREDENTIAL_REQUEST", "level": "HIGH",   "detail": "Requests login credentials, password, or verification"})
+    if financial_detected:    signals.append({"type": "FINANCIAL_PRESSURE",  "level": "HIGH",   "detail": "Payment or wire transfer request detected"})
+    if impersonation_detected: signals.append({"type": "IMPERSONATION",      "level": "HIGH",   "detail": "Impersonates trusted brand or authority figure"})
+    if tech_support_detected: signals.append({"type": "TECH_SUPPORT_SCAM",   "level": "MEDIUM", "detail": "Fake invoice or tech support refund scam pattern"})
+    if lottery_detected:      signals.append({"type": "LOTTERY_SCAM",        "level": "MEDIUM", "detail": "Prize or lottery winning notification"})
+    if extortion_detected:    signals.append({"type": "EXTORTION",           "level": "CRITICAL","detail": "Blackmail or extortion threat detected"})
+    if sensitive_info:        signals.append({"type": "PII_REQUEST",          "level": "HIGH",   "detail": "Requests sensitive personal information (SSN, card, etc.)"})
+
+    risk_level = "LOW"
+    if any(s["level"] == "CRITICAL" for s in signals): risk_level = "CRITICAL"
+    elif any(s["level"] == "HIGH" for s in signals) and len(signals) >= 2: risk_level = "HIGH"
+    elif any(s["level"] == "HIGH" for s in signals): risk_level = "MEDIUM"
+    elif signals: risk_level = "LOW"
+
+    return {
+        "signals": signals,
+        "risk_level": risk_level,
+        "social_engineering": len(signals) >= 2,
+        "signal_count": len(signals),
+        "analysis_type": "HEURISTIC_LOCAL",
+        "note": "Language analysis uses rule-based heuristic pattern matching on email content.",
+    }
+
 
 def _security_decision(result: dict) -> dict:
     """
@@ -817,8 +1193,28 @@ def _build_timeline(result: dict, req: AnalyzeRequest) -> List[dict]:
             "Email requests login credentials or password verification",
             "critical")
 
-    evt(500, "BEHAVIOURAL ANALYSIS",   "Historical pattern analysis complete")
-    evt(550, "THREAT INTELLIGENCE",    "Local IOC database lookup complete [LOCAL INTELLIGENCE]")
+    evt(500, "BEHAVIOURAL ANALYSIS",   "Historical pattern analysis complete [HEURISTIC]")
+
+    # Threat Intelligence event
+    intel = result["forensics"].get("threat_intel", {})
+    if intel.get("has_threats"):
+        ioc_count = len(intel.get("ioc_hits", []))
+        evt(540, "THREAT INTELLIGENCE MATCH",
+            f"{ioc_count} IOC(s) matched in local threat database [LOCAL INTELLIGENCE]",
+            "critical")
+    else:
+        evt(540, "THREAT INTELLIGENCE",
+            "Local IOC database lookup complete — no matches [LOCAL INTELLIGENCE]",
+            "info")
+
+    # Sender Reputation event
+    rep = result["forensics"].get("sender_reputation", {})
+    rep_val = rep.get("reputation", "unknown")
+    rep_level = "critical" if rep_val == "malicious" else ("warning" if rep_val == "suspicious" else "info")
+    evt(560, "SENDER REPUTATION",
+        f"Reputation: {rep_val.upper()} (confidence: {rep.get('confidence', 0)}%) [LOCAL ANALYSIS]",
+        rep_level)
+
     evt(600, "RISK SCORE CALCULATED",  f"Final threat score: {result['score']}/100 — {result['verdict']}")
 
     # Final action
@@ -889,6 +1285,23 @@ def _seed_email(subject, from_address, reply_to, sender_ip, headers, body, is_de
         headers=headers, body=body,
     )
     geo = get_geolocation(sender_ip)
+
+    # Threat Intelligence for seed emails
+    urls_found = result["forensics"].get("urls_found", [])
+    intel_result = threat_intel.evaluate_email(
+        from_address=from_address,
+        reply_to=reply_to,
+        sender_ip=sender_ip,
+        urls=urls_found,
+        attachments=[],
+    )
+    sender_reputation = _derive_sender_reputation(from_address, sender_ip, intel_result)
+    language_analysis = _extract_language_analysis(result)
+
+    result["forensics"]["threat_intel"]      = intel_result
+    result["forensics"]["sender_reputation"] = sender_reputation
+    result["forensics"]["language_analysis"] = language_analysis
+
     email_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
 
