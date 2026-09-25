@@ -1,63 +1,51 @@
 /**
- * dashboard.js — Premium SOC Dashboard v2
- * MailGuard AI
- *
- * Features:
- *  • Animated KPI stat cards with delta indicators
- *  • Threat-level radial gauge
- *  • Email volume timeline (line + gradient fill)
- *  • Verdict doughnut with centre KPI
- *  • Category horizontal bars
- *  • Top sender domains
- *  • Live recent-alerts feed with severity rows
- *  • Auto-refresh every 60 s
+ * dashboard.js — SOC Dashboard v2
+ * MailGuard AI — Pre-Delivery Email Security Gateway
  */
 'use strict';
 
 (function () {
-  const { API, toast, verdictClass, verdictColour, scoreColour,
+  const { API, toast, verdictClass, verdictColour, scoreColour, actionClass,
           formatTimestamp, escHtml, truncate, registerPage, navigate } = window.APP;
 
   let _charts = [];
-  let _prevData = null;   // for delta arrows
+  let _prevData = null;
 
-  // ── Destroy all Chart.js instances ────────────────────────────
   function destroyCharts() {
     _charts.forEach(c => { try { c.destroy(); } catch (_) {} });
     _charts = [];
   }
 
-  // ── Chart.js global defaults ───────────────────────────────────
   function applyChartDefaults() {
     if (!window.Chart) return;
-    Chart.defaults.color          = '#8ca0b8';
-    Chart.defaults.borderColor    = '#1e2d42';
-    Chart.defaults.font.family    = "'Segoe UI', 'Inter', system-ui";
-    Chart.defaults.font.size      = 12;
-    Chart.defaults.animation      = { duration: 600, easing: 'easeOutQuart' };
+    Chart.defaults.color       = '#7a96b8';
+    Chart.defaults.borderColor = '#1a2a40';
+    Chart.defaults.font.family = "'Inter', 'Segoe UI', system-ui";
+    Chart.defaults.font.size   = 11;
+    Chart.defaults.animation   = { duration: 500, easing: 'easeOutQuart' };
   }
 
-  // ── Page HTML skeleton ─────────────────────────────────────────
+  // ── Page skeleton ──────────────────────────────────────────────
   function renderPage() {
     return `
-<!-- ══ DASHBOARD HEADER ══════════════════════════════════════ -->
 <div class="dash-toprow">
   <div>
-    <h1 class="page-title">📊 SOC Dashboard</h1>
-    <p class="page-subtitle">Real-time email threat intelligence — MailGuard AI</p>
+    <h1 class="page-title">SOC Dashboard</h1>
+    <p class="page-subtitle">Pre-delivery email security gateway — real-time threat monitoring</p>
   </div>
   <div class="dash-actions">
     <span id="dash-last-refresh" class="text-muted text-small"></span>
     <button class="btn btn-secondary btn-sm" id="dash-refresh">↻ Refresh</button>
+    <button class="btn btn-primary btn-sm" onclick="window.APP.navigate('#analyze')">+ Scan Email</button>
   </div>
 </div>
 
-<!-- ══ THREAT LEVEL BANNER ════════════════════════════════════ -->
+<!-- Threat level banner -->
 <div class="threat-banner" id="threat-banner">
   <div class="threat-banner-left">
     <div class="threat-ring-wrap">
-      <canvas id="gauge-canvas" width="120" height="120"></canvas>
-      <div class="threat-ring-centre" id="gauge-centre">
+      <canvas id="gauge-canvas" width="100" height="100"></canvas>
+      <div class="threat-ring-centre">
         <span class="gauge-pct" id="gauge-pct">—</span>
         <span class="gauge-label">THREAT<br>RATE</span>
       </div>
@@ -65,7 +53,7 @@
   </div>
   <div class="threat-banner-right">
     <div class="threat-level-label" id="threat-level-label">Loading…</div>
-    <p class="threat-level-desc" id="threat-level-desc">Fetching current threat intelligence…</p>
+    <p class="threat-level-desc" id="threat-level-desc">Fetching threat intelligence…</p>
     <div class="threat-bar-wrap">
       <div class="threat-bar-track">
         <div class="threat-bar-fill" id="threat-bar-fill" style="width:0%"></div>
@@ -74,15 +62,17 @@
   </div>
 </div>
 
-<!-- ══ KPI STAT CARDS ═════════════════════════════════════════ -->
+<!-- KPI stat cards -->
 <div class="kpi-grid" id="kpi-grid">
-  ${buildKpiSkeleton()}
+  ${Array(9).fill(0).map(() => `
+    <div class="kpi-card">
+      <div class="kpi-label text-muted">Loading…</div>
+      <div class="kpi-value" style="color:var(--text-muted)">—</div>
+    </div>`).join('')}
 </div>
 
-<!-- ══ CHARTS ROW 1 ══════════════════════════════════════════ -->
+<!-- Charts row -->
 <div class="dash-grid-2">
-
-  <!-- Timeline -->
   <div class="chart-card dash-card-tall">
     <div class="card-header">
       <span class="card-title">📈 Email Volume — Last 14 Days</span>
@@ -90,76 +80,60 @@
     </div>
     <canvas id="chart-timeline"></canvas>
   </div>
-
-  <!-- Verdict doughnut -->
   <div class="chart-card">
     <div class="card-header">
-      <span class="card-title">🥧 Threat Distribution</span>
+      <span class="card-title">🎯 Threat Distribution</span>
     </div>
     <div class="doughnut-wrap">
       <canvas id="chart-verdict"></canvas>
-      <div class="doughnut-centre" id="doughnut-centre">
+      <div class="doughnut-centre">
         <span class="doughnut-big" id="doughnut-big">—</span>
         <span class="doughnut-sub">Total</span>
       </div>
     </div>
     <div class="verdict-legend" id="verdict-legend"></div>
   </div>
-
 </div>
 
-<!-- ══ CHARTS ROW 2 ══════════════════════════════════════════ -->
+<!-- Category + Domains -->
 <div class="dash-grid-2">
-
-  <!-- Category bars -->
   <div class="chart-card">
     <div class="card-header">
       <span class="card-title">📂 Threat Categories</span>
     </div>
     <div id="category-bars">
-      <div class="loading-splash" style="min-height:120px"><div class="spinner-ring"></div></div>
+      <div class="loading-splash" style="min-height:100px"><div class="spinner-ring"></div></div>
     </div>
   </div>
-
-  <!-- Top domains -->
   <div class="chart-card">
     <div class="card-header">
       <span class="card-title">🌐 Top Sender Domains</span>
     </div>
     <div id="domain-bars">
-      <div class="loading-splash" style="min-height:120px"><div class="spinner-ring"></div></div>
+      <div class="loading-splash" style="min-height:100px"><div class="spinner-ring"></div></div>
     </div>
   </div>
-
 </div>
 
-<!-- ══ RECENT ALERTS FEED ═════════════════════════════════════ -->
+<!-- Recent threat activity table -->
 <div class="card">
   <div class="card-header">
-    <span class="card-title">🚨 Recent Alerts Feed</span>
+    <span class="card-title">🚨 Recent Threat Activity</span>
     <div style="display:flex;gap:0.5rem;align-items:center">
       <span id="alerts-count" class="text-muted text-small"></span>
       <a href="#reports" class="btn btn-secondary btn-sm">View All →</a>
     </div>
   </div>
   <div id="alerts-feed">
-    <div class="loading-splash" style="min-height:120px"><div class="spinner-ring"></div></div>
+    <div class="loading-splash" style="min-height:100px"><div class="spinner-ring"></div></div>
   </div>
 </div>`;
   }
 
-  // ── KPI skeleton placeholders ──────────────────────────────────
-  function buildKpiSkeleton() {
-    return Array(6).fill(0).map(() => `
-      <div class="kpi-card">
-        <div class="kpi-label text-muted">Loading…</div>
-        <div class="kpi-value" style="color:var(--text-muted)">—</div>
-      </div>`).join('');
-  }
-
-  // ── Animate a counter from 0 ──────────────────────────────────
+  // ── Animate counter ────────────────────────────────────────────
   function animateCount(el, target, suffix = '') {
-    const dur = 800, steps = 30;
+    if (!el) return;
+    const dur = 700, steps = 25;
     let i = 0;
     const iv = setInterval(() => {
       i++;
@@ -168,7 +142,7 @@
     }, dur / steps);
   }
 
-  // ── KPI Cards ─────────────────────────────────────────────────
+  // ── KPI Cards ──────────────────────────────────────────────────
   function populateKpis(data) {
     const grid = document.getElementById('kpi-grid');
     if (!grid) return;
@@ -183,61 +157,30 @@
         : `<span class="kpi-delta kpi-delta-dn">▼ ${Math.abs(d)}</span>`;
     };
 
+    // Derive extra stats from the data
+    const total    = data.total || 0;
+    const blocked  = data.blocked !== undefined ? data.blocked : (data.critical || 0);
+    const quarant  = data.quarantined || 0;
+    const susp     = data.suspicious || 0;
+    const high     = data.high_risk || 0;
+    const crit     = data.critical || 0;
+
+    // BEC/phishing from category breakdown
+    const bycat = data.by_category || {};
+    const bec   = (bycat['BUSINESS_EMAIL_COMPROMISE'] || 0) + (bycat['PAYMENT_FRAUD'] || 0);
+    const cred  = bycat['CREDENTIAL_THEFT'] || 0;
+    const spam  = bycat['SPAM'] || 0;
+
     const cards = [
-      {
-        label: 'Total Analysed',
-        value: data.total,
-        sub:   'All time',
-        color: 'var(--brand)',
-        accent:'accent-brand',
-        icon:  '📧',
-        delta: delta('total'),
-      },
-      {
-        label: 'Safe',
-        value: data.safe,
-        sub:   data.total ? `${Math.round(data.safe / data.total * 100)}% of total` : '0%',
-        color: 'var(--safe)',
-        accent:'accent-safe',
-        icon:  '✅',
-        delta: delta('safe'),
-      },
-      {
-        label: 'Suspicious',
-        value: data.suspicious,
-        sub:   data.total ? `${Math.round(data.suspicious / data.total * 100)}% of total` : '0%',
-        color: 'var(--suspicious)',
-        accent:'accent-suspicious',
-        icon:  '⚠️',
-        delta: delta('suspicious'),
-      },
-      {
-        label: 'High Risk',
-        value: data.high_risk,
-        sub:   data.total ? `${Math.round(data.high_risk / data.total * 100)}% of total` : '0%',
-        color: 'var(--high)',
-        accent:'accent-high',
-        icon:  '🔴',
-        delta: delta('high_risk'),
-      },
-      {
-        label: 'Critical',
-        value: data.critical,
-        sub:   data.total ? `${Math.round(data.critical / data.total * 100)}% of total` : '0%',
-        color: 'var(--critical)',
-        accent:'accent-critical',
-        icon:  '💀',
-        delta: delta('critical'),
-      },
-      {
-        label: 'Quarantined',
-        value: data.quarantined || 0,
-        sub:   'Analyst-flagged',
-        color: '#a855f7',
-        accent:'accent-purple',
-        icon:  '🔒',
-        delta: delta('quarantined'),
-      },
+      { label: 'Total Analyzed', value: total,    icon: '📧', color: 'var(--brand)',      accent: 'accent-brand',      sub: 'All time',             delta: delta('total') },
+      { label: 'Threats Blocked',value: blocked,  icon: '🚫', color: 'var(--critical)',   accent: 'accent-critical',   sub: 'Score ≥ 80 or Policy', delta: delta('blocked') },
+      { label: 'Quarantined',    value: quarant,  icon: '🔒', color: '#a855f7',           accent: 'accent-purple',     sub: 'Analyst / Policy hold',delta: delta('quarantined') },
+      { label: 'Suspicious',     value: susp,     icon: '⚠️', color: 'var(--suspicious)', accent: 'accent-suspicious', sub: 'Score 30–59',          delta: delta('suspicious') },
+      { label: 'High Risk',      value: high,     icon: '🔴', color: 'var(--high)',       accent: 'accent-high',       sub: 'Score 60–79',          delta: delta('high_risk') },
+      { label: 'Critical',       value: crit,     icon: '💀', color: 'var(--critical)',   accent: 'accent-critical',   sub: 'Score ≥ 80',           delta: delta('critical') },
+      { label: 'BEC Detected',   value: bec,      icon: '💸', color: '#14b8a6',           accent: 'accent-teal',       sub: 'Wire fraud + BEC',     delta: '' },
+      { label: 'Credential Theft',value: cred,    icon: '🔑', color: '#3b82f6',           accent: 'accent-blue',       sub: 'Password phishing',    delta: '' },
+      { label: 'Safe Delivered', value: data.safe||0, icon: '✅', color: 'var(--safe)', accent: 'accent-safe',       sub: 'No threat found',      delta: delta('safe') },
     ];
 
     grid.innerHTML = cards.map(c => `
@@ -246,89 +189,80 @@
           <span class="kpi-icon">${c.icon}</span>
           ${c.delta}
         </div>
-        <div class="kpi-value" style="color:${c.color}" id="kpi-val-${c.label.replace(/\s/g,'')}">0</div>
+        <div class="kpi-value" style="color:${c.color}" id="kv-${c.label.replace(/\s/g,'_')}">${c.value}</div>
         <div class="kpi-label">${c.label}</div>
         <div class="kpi-sub">${c.sub}</div>
       </div>`).join('');
 
-    // Animate counters
     cards.forEach(c => {
-      const el = document.getElementById(`kpi-val-${c.label.replace(/\s/g,'')}`);
+      const el = document.getElementById(`kv-${c.label.replace(/\s/g,'_')}`);
       if (el) animateCount(el, c.value);
     });
   }
 
-  // ── Threat gauge (custom canvas) ──────────────────────────────
+  // ── Threat gauge ───────────────────────────────────────────────
   function drawGauge(pct) {
     const canvas = document.getElementById('gauge-canvas');
     if (!canvas) return;
-    const ctx    = canvas.getContext('2d');
-    const cx = 60, cy = 60, r = 48;
+    const ctx = canvas.getContext('2d');
+    const cx = 50, cy = 50, r = 40;
     const start = Math.PI * 0.75, sweep = Math.PI * 1.5;
 
-    ctx.clearRect(0, 0, 120, 120);
-
-    // Track
+    ctx.clearRect(0, 0, 100, 100);
     ctx.beginPath();
     ctx.arc(cx, cy, r, start, start + sweep);
-    ctx.strokeStyle = '#1e2d42';
-    ctx.lineWidth   = 10;
+    ctx.strokeStyle = '#1a2a40';
+    ctx.lineWidth   = 8;
     ctx.lineCap     = 'round';
     ctx.stroke();
 
-    // Fill
     const fillAngle = start + sweep * (pct / 100);
     const col = pct >= 60 ? '#dc2626' : pct >= 30 ? '#f59e0b' : '#22c55e';
-
-    const grad = ctx.createLinearGradient(0, 0, 120, 120);
+    const grad = ctx.createLinearGradient(0, 0, 100, 100);
     grad.addColorStop(0, col + 'cc');
     grad.addColorStop(1, col);
-
     ctx.beginPath();
     ctx.arc(cx, cy, r, start, fillAngle);
     ctx.strokeStyle = grad;
-    ctx.lineWidth   = 10;
+    ctx.lineWidth   = 8;
     ctx.lineCap     = 'round';
     ctx.stroke();
 
-    // Update centre text
-    const pctEl   = document.getElementById('gauge-pct');
-    const labelEl = document.getElementById('threat-level-label');
-    const descEl  = document.getElementById('threat-level-desc');
-    const barEl   = document.getElementById('threat-bar-fill');
-    const banner  = document.getElementById('threat-banner');
+    const pctEl    = document.getElementById('gauge-pct');
+    const labelEl  = document.getElementById('threat-level-label');
+    const descEl   = document.getElementById('threat-level-desc');
+    const barEl    = document.getElementById('threat-bar-fill');
+    const banner   = document.getElementById('threat-banner');
 
     if (pctEl) pctEl.textContent = pct + '%';
     if (barEl) barEl.style.width = pct + '%';
 
     let level, desc, bannerClass;
     if (pct >= 60) {
-      level      = '🔴 CRITICAL THREAT LEVEL';
-      desc       = 'More than half of analysed emails are threats. Immediate SOC response required.';
-      bannerClass= 'threat-banner-critical';
+      level = '🔴 CRITICAL THREAT LEVEL';
+      desc  = 'More than half of analysed emails are threats. Immediate SOC response required.';
+      bannerClass = 'threat-banner-critical';
       if (barEl) barEl.style.background = 'var(--critical)';
     } else if (pct >= 30) {
-      level      = '🟠 ELEVATED THREAT LEVEL';
-      desc       = 'Significant threat activity detected. Active monitoring recommended.';
-      bannerClass= 'threat-banner-high';
+      level = '🟠 ELEVATED THREAT LEVEL';
+      desc  = 'Significant threat activity detected. Active monitoring recommended.';
+      bannerClass = 'threat-banner-high';
       if (barEl) barEl.style.background = 'var(--suspicious)';
     } else if (pct > 0) {
-      level      = '🟡 MODERATE THREAT LEVEL';
-      desc       = 'Low-to-moderate threat activity. Standard protocols in place.';
-      bannerClass= 'threat-banner-moderate';
+      level = '🟡 MODERATE THREAT LEVEL';
+      desc  = 'Low-to-moderate threat activity. Standard protocols in place.';
+      bannerClass = 'threat-banner-moderate';
       if (barEl) barEl.style.background = 'var(--suspicious)';
     } else {
-      level      = '🟢 CLEAR — No Threats Detected';
-      desc       = 'All analysed emails appear safe. System operating normally.';
-      bannerClass= 'threat-banner-safe';
+      level = '🟢 CLEAR — No Active Threats';
+      desc  = 'All analysed emails appear safe. System operating normally.';
+      bannerClass = 'threat-banner-safe';
       if (barEl) barEl.style.background = 'var(--safe)';
     }
 
     if (labelEl) labelEl.textContent = level;
     if (descEl)  descEl.textContent  = desc;
-    if (banner) {
-      banner.className = `threat-banner ${bannerClass}`;
-    }
+    if (banner)  banner.className    = `threat-banner ${bannerClass}`;
   }
 
   // ── Timeline chart ─────────────────────────────────────────────
@@ -339,34 +273,30 @@
     const days   = Object.keys(data.by_day || {}).sort();
     const counts = days.map(d => data.by_day[d]);
     const total  = counts.reduce((a, b) => a + b, 0);
+    const tEl = document.getElementById('timeline-total');
+    if (tEl) tEl.textContent = `${total} emails in period`;
 
-    const totalEl = document.getElementById('timeline-total');
-    if (totalEl) totalEl.textContent = `${total} emails in period`;
-
-    const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 280);
-    gradient.addColorStop(0,   'rgba(0,212,255,0.25)');
-    gradient.addColorStop(0.6, 'rgba(0,212,255,0.05)');
+    const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 250);
+    gradient.addColorStop(0,   'rgba(0,212,255,0.2)');
+    gradient.addColorStop(0.7, 'rgba(0,212,255,0.03)');
     gradient.addColorStop(1,   'rgba(0,212,255,0)');
 
     _charts.push(new Chart(ctx, {
       type: 'line',
       data: {
-        labels: days.map(d => {
-          const dt = new Date(d);
-          return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-        }),
+        labels: days.map(d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })),
         datasets: [{
-          label:            'Emails',
-          data:             counts,
-          borderColor:      '#00d4ff',
-          backgroundColor:  gradient,
-          fill:             true,
-          tension:          0.45,
+          label: 'Emails',
+          data: counts,
+          borderColor: '#00d4ff',
+          backgroundColor: gradient,
+          fill: true,
+          tension: 0.45,
           pointBackgroundColor: '#00d4ff',
-          pointBorderColor:     '#0d1421',
-          pointBorderWidth:     2,
-          pointRadius:          5,
-          pointHoverRadius:     7,
+          pointBorderColor: '#0d1421',
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
         }],
       },
       options: {
@@ -376,14 +306,13 @@
           legend: { display: false },
           tooltip: {
             callbacks: {
-              title: items => items[0].label,
-              label: item  => ` ${item.raw} email${item.raw !== 1 ? 's' : ''}`,
+              label: item => ` ${item.raw} email${item.raw !== 1 ? 's' : ''}`,
             },
           },
         },
         scales: {
-          x: { grid: { color: '#1e2d42' }, ticks: { maxTicksLimit: 7 } },
-          y: { grid: { color: '#1e2d42' }, beginAtZero: true, ticks: { stepSize: 1 } },
+          x: { grid: { color: '#1a2a40' }, ticks: { maxTicksLimit: 7 } },
+          y: { grid: { color: '#1a2a40' }, beginAtZero: true, ticks: { stepSize: 1 } },
         },
       },
     }));
@@ -402,7 +331,6 @@
     const centreEl = document.getElementById('doughnut-big');
     if (centreEl) centreEl.textContent = total;
 
-    // Legend
     const legendEl = document.getElementById('verdict-legend');
     if (legendEl) {
       legendEl.innerHTML = labels.map((l, i) => `
@@ -418,16 +346,16 @@
       data: {
         labels,
         datasets: [{
-          data:            vals,
+          data: vals,
           backgroundColor: colours,
-          borderColor:     '#111927',
-          borderWidth:     4,
-          hoverOffset:     8,
+          borderColor: '#0a1220',
+          borderWidth: 4,
+          hoverOffset: 6,
         }],
       },
       options: {
         responsive: true,
-        cutout: '68%',
+        cutout: '70%',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -440,13 +368,12 @@
     }));
   }
 
-  // ── Category progress bars ─────────────────────────────────────
+  // ── Category bars ──────────────────────────────────────────────
   function buildCategoryBars(data) {
     const el = document.getElementById('category-bars');
     if (!el) return;
-
-    const cats    = Object.entries(data.by_category || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
-    const maxVal  = cats.length ? cats[0][1] : 1;
+    const cats   = Object.entries(data.by_category || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const maxVal = cats.length ? cats[0][1] : 1;
     const palette = ['#dc2626','#ef4444','#f59e0b','#22c55e','#3b9eda','#8b5cf6','#ec4899','#14b8a6'];
 
     if (!cats.length) {
@@ -460,26 +387,16 @@
       return `
         <div class="catbar-row">
           <div class="catbar-label">${escHtml(cat.replace(/_/g, ' '))}</div>
-          <div class="catbar-track">
-            <div class="catbar-fill" style="width:${pct}%;background:${col}"></div>
-          </div>
+          <div class="catbar-track"><div class="catbar-fill" style="width:${pct}%;background:${col}"></div></div>
           <div class="catbar-count" style="color:${col}">${cnt}</div>
         </div>`;
     }).join('');
-
-    // Animate bars in
-    requestAnimationFrame(() => {
-      el.querySelectorAll('.catbar-fill').forEach(b => {
-        b.style.transition = 'width 0.7s cubic-bezier(0.4,0,0.2,1)';
-      });
-    });
   }
 
-  // ── Domain progress bars ───────────────────────────────────────
+  // ── Domain bars ────────────────────────────────────────────────
   function buildDomainBars(data) {
     const el = document.getElementById('domain-bars');
     if (!el) return;
-
     const doms   = (data.top_domains || []).slice(0, 8);
     const maxVal = doms.length ? doms[0][1] : 1;
 
@@ -489,61 +406,83 @@
     }
 
     el.innerHTML = doms.map(([domain, cnt]) => {
-      const pct      = Math.round(cnt / maxVal * 100);
-      const cleaned  = (domain || '(unknown)').replace(/[">]/g, '').slice(0, 40);
+      const pct = Math.round(cnt / maxVal * 100);
+      const cleaned = (domain || '(unknown)').replace(/["><]/g, '').slice(0, 40);
       return `
         <div class="catbar-row">
           <div class="catbar-label font-mono" title="${escHtml(domain)}">${escHtml(cleaned)}</div>
-          <div class="catbar-track">
-            <div class="catbar-fill" style="width:${pct}%;background:rgba(0,212,255,0.7)"></div>
-          </div>
+          <div class="catbar-track"><div class="catbar-fill" style="width:${pct}%;background:rgba(0,212,255,0.6)"></div></div>
           <div class="catbar-count" style="color:var(--brand)">${cnt}</div>
         </div>`;
     }).join('');
   }
 
-  // ── Recent alerts feed ─────────────────────────────────────────
+  // ── Recent alerts table ────────────────────────────────────────
   function buildAlertsFeed(recent) {
     const el = document.getElementById('alerts-feed');
     const countEl = document.getElementById('alerts-count');
     if (!el) return;
 
     if (!recent || !recent.length) {
-      el.innerHTML = `
-        <div class="empty-state" style="min-height:100px">
-          <div class="empty-state-icon">📭</div>
-          <div class="empty-state-text">No emails analysed yet</div>
-        </div>`;
+      el.innerHTML = `<div class="empty-state" style="min-height:80px"><div class="empty-state-icon">📭</div><div class="empty-state-text">No emails analysed yet</div></div>`;
       return;
     }
 
     if (countEl) countEl.textContent = `${recent.length} recent`;
 
-    el.innerHTML = recent.map(e => {
+    // Table header
+    const header = `
+      <div style="display:grid;grid-template-columns:80px 1fr 160px 120px 70px 110px;gap:0.5rem;padding:0.4rem 1rem;border-bottom:1px solid var(--border);">
+        <span class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.06em">Time</span>
+        <span class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.06em">Sender / Subject</span>
+        <span class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.06em">Category</span>
+        <span class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.06em">Verdict</span>
+        <span class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.06em">Score</span>
+        <span class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.06em">Action</span>
+      </div>`;
+
+    const rows = recent.map(e => {
       const vc  = verdictClass(e.verdict);
       const sc  = scoreColour(e.score);
       const icon = { SAFE:'✅', SUSPICIOUS:'⚠️', HIGH_RISK:'🔴', CRITICAL:'💀' }[e.verdict] || '📧';
+      const timeStr = e.timestamp ? new Date(e.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+
+      // Determine action from decision or score/verdict
+      let action = 'DELIVER';
+      if (e.decision && e.decision.action) {
+        action = e.decision.action;
+      } else if (e.score >= 80) {
+        action = 'BLOCK';
+      } else if (e.score >= 60) {
+        action = 'QUARANTINE';
+      } else if (e.score >= 30) {
+        action = 'FLAG';
+      }
+
+      const ac = actionClass(action);
+
       return `
-        <div class="alert-row alert-row-${vc} clickable" data-id="${escHtml(e.id)}">
-          <div class="alert-icon">${icon}</div>
-          <div class="alert-body">
-            <div class="alert-subject">${escHtml(truncate(e.subject || '(no subject)', 55))}</div>
-            <div class="alert-from text-muted">${escHtml(truncate(e.from_address || '—', 45))}</div>
+        <div class="alert-row alert-row-${vc} clickable" data-id="${escHtml(e.id)}"
+             style="display:grid;grid-template-columns:80px 1fr 160px 120px 70px 110px;gap:0.5rem;padding:0.65rem 1rem;border-radius:0;border-bottom:1px solid rgba(255,255,255,0.03)">
+          <div class="text-small font-mono text-muted">${timeStr}</div>
+          <div style="min-width:0">
+            <div style="font-size:0.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(truncate(e.from_address || '—', 50))}</div>
+            <div class="text-xs text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(truncate(e.subject || '(no subject)', 50))}</div>
           </div>
-          <div class="alert-meta">
-            <span class="badge badge-${vc}">${e.verdict.replace('_', ' ')}</span>
-            <span class="alert-score" style="color:${sc}">${e.score}/100</span>
-            <span class="alert-time text-muted">${formatTimestamp(e.timestamp)}</span>
-          </div>
+          <div><span class="text-xs text-muted">${escHtml((e.category || '—').replace(/_/g,' '))}</span></div>
+          <div><span class="badge badge-${vc}">${icon} ${e.verdict.replace('_',' ')}</span></div>
+          <div><span style="font-size:0.85rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:${sc}">${e.score}</span></div>
+          <div><span class="badge ${ac}">${action}</span></div>
         </div>`;
     }).join('');
+
+    el.innerHTML = header + rows;
 
     el.querySelectorAll('.alert-row.clickable').forEach(row => {
       row.addEventListener('click', () => navigate(`#report/${row.dataset.id}`));
     });
   }
 
-  // ── Last-refresh timestamp ─────────────────────────────────────
   function setRefreshTime() {
     const el = document.getElementById('dash-last-refresh');
     if (el) el.textContent = `Updated ${new Date().toLocaleTimeString('en-IN')}`;
@@ -553,7 +492,6 @@
   async function loadDashboard() {
     try {
       const data = await API.get('/api/dashboard');
-
       populateKpis(data);
       drawGauge(data.threat_percentage || 0);
       destroyCharts();
@@ -563,7 +501,6 @@
       buildDomainBars(data);
       buildAlertsFeed(data.recent);
       setRefreshTime();
-
       _prevData = data;
     } catch (err) {
       toast(`Dashboard error: ${err.message}`, 'error', 6000);
@@ -579,6 +516,7 @@
 
       document.getElementById('dash-refresh')?.addEventListener('click', () => {
         toast('Refreshing…', 'success', 1500);
+        destroyCharts();
         loadDashboard();
       });
 

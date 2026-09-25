@@ -150,6 +150,7 @@ class DashboardStats(BaseModel):
     high_risk:        int
     critical:         int
     quarantined:      int
+    blocked:          int = 0
     threat_percentage: float
     recent:           List[EmailSummary]
     by_category:      Dict[str, int]

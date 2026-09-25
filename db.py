@@ -97,7 +97,9 @@ CREATE TABLE IF NOT EXISTS emails (
     geo         TEXT DEFAULT '{}',
     forensics   TEXT DEFAULT '{}',
     recommended_action TEXT DEFAULT '',
-    status      TEXT DEFAULT 'new'
+    status      TEXT DEFAULT 'new',
+    decision    TEXT DEFAULT '{}',
+    timeline    TEXT DEFAULT '[]'
 );
 """
 
@@ -154,6 +156,11 @@ def _ensure_db_initialized() -> None:
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA busy_timeout=5000")
             conn.executescript(_SCHEMA)
+            for col, col_def in [("decision", "TEXT DEFAULT '{}'"), ("timeline", "TEXT DEFAULT '[]'")]:
+                try:
+                    conn.execute(f"ALTER TABLE emails ADD COLUMN {col} {col_def}")
+                except Exception:
+                    pass
             conn.commit()
         finally:
             conn.close()
@@ -183,9 +190,12 @@ def _dj(val: str) -> Any:
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     d = dict(row)
-    for field in ("reasons", "breakdown", "checks", "geo", "forensics"):
+    for field in ("reasons", "breakdown", "checks", "geo", "forensics", "timeline"):
         raw = d.get(field)
-        d[field] = json.loads(raw) if raw else ({} if field in ("breakdown", "geo", "forensics") else [])
+        d[field] = json.loads(raw) if raw else ({} if field in ("breakdown", "geo", "forensics", "decision") else [])
+    # Handle decision separately (dict)
+    raw_dec = d.get("decision")
+    d["decision"] = json.loads(raw_dec) if raw_dec else {}
     return d
 
 
@@ -195,18 +205,30 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 def insert_email(record: Dict[str, Any]) -> None:
     """Insert a fully-built analysis record."""
     conn = _get_conn()
+    # Add new columns if they don't exist (migration for existing DB)
+    try:
+        conn.execute("ALTER TABLE emails ADD COLUMN decision TEXT DEFAULT '{}'")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE emails ADD COLUMN timeline TEXT DEFAULT '[]'")
+        conn.commit()
+    except Exception:
+        pass
+
     conn.execute(
         """
         INSERT INTO emails
             (id, timestamp, subject, from_address, reply_to, sender_ip, headers, body,
              score, verdict, category, confidence,
              reasons, breakdown, checks, geo, forensics,
-             recommended_action, status)
+             recommended_action, status, decision, timeline)
         VALUES
             (:id, :timestamp, :subject, :from_address, :reply_to, :sender_ip, :headers, :body,
              :score, :verdict, :category, :confidence,
              :reasons, :breakdown, :checks, :geo, :forensics,
-             :recommended_action, :status)
+             :recommended_action, :status, :decision, :timeline)
         """,
         {
             **record,
@@ -215,6 +237,8 @@ def insert_email(record: Dict[str, Any]) -> None:
             "checks":    _j(record.get("checks",     [])),
             "geo":       _j(record.get("geo",        {})),
             "forensics": _j(record.get("forensics",  {})),
+            "decision":  _j(record.get("decision",   {})),
+            "timeline":  _j(record.get("timeline",   [])),
         },
     )
     conn.commit()
@@ -258,7 +282,18 @@ def dashboard_stats() -> Dict[str, Any]:
     susp      = conn.execute("SELECT COUNT(*) FROM emails WHERE verdict='SUSPICIOUS'").fetchone()[0]
     high      = conn.execute("SELECT COUNT(*) FROM emails WHERE verdict='HIGH_RISK'").fetchone()[0]
     critical  = conn.execute("SELECT COUNT(*) FROM emails WHERE verdict='CRITICAL'").fetchone()[0]
-    quarantined = conn.execute("SELECT COUNT(*) FROM emails WHERE status='quarantined'").fetchone()[0]
+    quarantined = conn.execute(
+        """SELECT COUNT(*) FROM emails 
+           WHERE status='quarantined' 
+              OR decision LIKE '%"action": "QUARANTINE"%' 
+              OR decision LIKE '%"action":"QUARANTINE"%'"""
+    ).fetchone()[0]
+    blocked = conn.execute(
+        """SELECT COUNT(*) FROM emails 
+           WHERE score >= 80 
+              OR decision LIKE '%"action": "BLOCK"%' 
+              OR decision LIKE '%"action":"BLOCK"%'"""
+    ).fetchone()[0]
 
     threat_pct = round(((susp + high + critical) / total * 100), 1) if total else 0.0
 
@@ -291,22 +326,27 @@ def dashboard_stats() -> Dict[str, Any]:
     ).fetchall()
     by_day = {r["day"]: r["cnt"] for r in day_rows}
 
-    # Top sender domains
+    # Top sender domains — cleanly extracted without < > " or whitespace
     domain_rows = conn.execute(
-        """SELECT
-               CASE
-                 WHEN instr(from_address,'@') > 0
-                 THEN substr(from_address, instr(from_address,'@')+1)
-                 ELSE from_address
-               END as domain,
-               COUNT(*) as cnt
+        """SELECT from_address, COUNT(*) as cnt
            FROM emails
-           WHERE from_address != ''
-           GROUP BY domain
-           ORDER BY cnt DESC
-           LIMIT 10"""
+           WHERE from_address IS NOT NULL AND from_address != ''
+           GROUP BY from_address
+           ORDER BY cnt DESC"""
     ).fetchall()
-    top_domains = [[r["domain"], r["cnt"]] for r in domain_rows]
+
+    import re
+    domain_counts: Dict[str, int] = {}
+    domain_re = re.compile(r"@([a-zA-Z0-9.\-]+)")
+    for r in domain_rows:
+        addr = r["from_address"] or ""
+        match = domain_re.search(addr)
+        domain = match.group(1).lower().strip(">\"' ") if match else addr.strip("<>\"' ")
+        if domain:
+            domain_counts[domain] = domain_counts.get(domain, 0) + r["cnt"]
+
+    top_domains = sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_domains = [[d, count] for d, count in top_domains]
 
     return {
         "total": total,
@@ -315,6 +355,7 @@ def dashboard_stats() -> Dict[str, Any]:
         "high_risk": high,
         "critical": critical,
         "quarantined": quarantined,
+        "blocked": blocked,
         "threat_percentage": threat_pct,
         "recent": recent,
         "by_category": by_category,

@@ -3,67 +3,158 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MailGuard AI — Email Threat Intelligence</title>
+  <title>MailGuard AI — Pre-Delivery Email Security Gateway</title>
+  <meta name="description" content="MailGuard AI is a modern pre-delivery email security gateway with threat intelligence, forensic analysis, and SOC investigation capabilities." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="/static/css/app.css" />
-  <!-- Chart.js from CDN (pinned version for reproducibility) -->
+  <!-- Chart.js from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════════════════════
-     TOP NAVIGATION BAR
+     APP SHELL — Sidebar Layout
 ═══════════════════════════════════════════════════════ -->
-<header class="topbar">
-  <div class="topbar-brand">
-    <span class="brand-icon">🛡</span>
-    <span class="brand-name">MailGuard <span class="brand-ai">AI</span></span>
-    <span class="brand-tag">Email Threat Intelligence</span>
-  </div>
+<div class="app-shell" id="app-shell">
 
-  <nav class="topbar-nav" id="main-nav">
-    <a href="#analyze"   class="nav-link" data-page="analyze">
-      <span class="nav-icon">🔍</span> Analyze
-    </a>
-    <a href="#dashboard" class="nav-link" data-page="dashboard">
-      <span class="nav-icon">📊</span> Dashboard
-    </a>
-    <a href="#reports"   class="nav-link" data-page="reports">
-      <span class="nav-icon">📋</span> Reports
-    </a>
-    <a href="#about"     class="nav-link" data-page="about">
-      <span class="nav-icon">ℹ</span> About
-    </a>
-  </nav>
+  <!-- ── SIDEBAR ───────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <!-- Brand -->
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">🛡</div>
+      <div class="sidebar-brand-text">
+        <div class="sidebar-brand-name">MailGuard <span class="brand-ai">AI</span></div>
+        <div class="sidebar-brand-sub">Email Security Gateway</div>
+      </div>
+    </div>
 
-  <div class="topbar-status" id="health-indicator">
-    <span class="status-dot" id="status-dot"></span>
-    <span id="status-text">Connecting…</span>
-  </div>
-</header>
+    <!-- System status indicator -->
+    <div class="sidebar-status" id="sidebar-status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Connecting…</span>
+    </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     PAGE CONTAINER — JS inserts page HTML here
-═══════════════════════════════════════════════════════ -->
-<main id="app-root">
-  <div class="loading-splash">
-    <div class="spinner-ring"></div>
-    <p>Loading MailGuard AI…</p>
-  </div>
-</main>
+    <!-- Navigation -->
+    <nav class="sidebar-nav" id="main-nav">
+      <div class="nav-section-label">MONITORING</div>
+      <a href="#dashboard" class="nav-link" data-page="dashboard" id="nav-dashboard">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Dashboard</span>
+      </a>
+      <a href="#threats" class="nav-link" data-page="threats" id="nav-threats">
+        <span class="nav-icon">🚨</span>
+        <span class="nav-label">Threat Feed</span>
+        <span class="nav-badge" id="threat-badge" style="display:none">0</span>
+      </a>
 
-<!-- ═══════════════════════════════════════════════════════
-     TOAST NOTIFICATION AREA
-═══════════════════════════════════════════════════════ -->
+      <div class="nav-section-label">ANALYSIS</div>
+      <a href="#analyze" class="nav-link" data-page="analyze" id="nav-analyze">
+        <span class="nav-icon">🔍</span>
+        <span class="nav-label">Email Scanner</span>
+      </a>
+      <a href="#reports" class="nav-link" data-page="reports" id="nav-reports">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Email Investigation</span>
+      </a>
+      <a href="#urls" class="nav-link" data-page="urls" id="nav-urls">
+        <span class="nav-icon">🔗</span>
+        <span class="nav-label">URL Analysis</span>
+      </a>
+      <a href="#attachments" class="nav-link" data-page="attachments" id="nav-attachments">
+        <span class="nav-icon">📎</span>
+        <span class="nav-label">Attachment Analysis</span>
+      </a>
+
+      <div class="nav-section-label">INTELLIGENCE</div>
+      <a href="#intelligence" class="nav-link" data-page="intelligence" id="nav-intelligence">
+        <span class="nav-icon">🧠</span>
+        <span class="nav-label">Threat Intelligence</span>
+      </a>
+      <a href="#timeline" class="nav-link" data-page="timeline" id="nav-timeline">
+        <span class="nav-icon">⏱</span>
+        <span class="nav-label">Forensic Timeline</span>
+      </a>
+
+      <div class="nav-section-label">CONFIGURATION</div>
+      <a href="#policies" class="nav-link" data-page="policies" id="nav-policies">
+        <span class="nav-icon">⚙</span>
+        <span class="nav-label">Security Policies</span>
+      </a>
+      <a href="#status" class="nav-link" data-page="status" id="nav-status">
+        <span class="nav-icon">🖥️</span>
+        <span class="nav-label">System Status</span>
+      </a>
+      <a href="#about" class="nav-link" data-page="about" id="nav-about">
+        <span class="nav-icon">ℹ</span>
+        <span class="nav-label">About</span>
+      </a>
+    </nav>
+
+    <!-- Sidebar footer -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-text">SIH 2026 Project</div>
+      <div class="sidebar-footer-sub">v2.0 — Pre-Delivery Security</div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT AREA ─────────────────────────────── -->
+  <div class="main-area">
+
+    <!-- Top security status bar -->
+    <header class="topbar" id="topbar">
+      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">☰</button>
+      <div class="topbar-breadcrumb" id="topbar-breadcrumb">
+        <span class="breadcrumb-item">MailGuard AI</span>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-page" id="breadcrumb-page">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-pill" id="gateway-pill">
+          <span class="pulse-dot"></span>
+          <span>Gateway Active</span>
+        </div>
+        <div class="topbar-pill" id="detector-pill">
+          <span class="pulse-dot pulse-blue"></span>
+          <span>Detector Ready</span>
+        </div>
+        <button class="btn btn-primary btn-sm" id="quick-analyze-btn" onclick="window.APP.navigate('#analyze')">
+          + Analyze Email
+        </button>
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <main id="app-root">
+      <div class="loading-splash">
+        <div class="spinner-ring"></div>
+        <p>Loading MailGuard AI…</p>
+      </div>
+    </main>
+
+  </div><!-- /main-area -->
+
+</div><!-- /app-shell -->
+
+<!-- Toast notifications -->
 <div id="toast-container" aria-live="polite"></div>
 
 <!-- ═══════════════════════════════════════════════════════
-     SCRIPTS
+     SCRIPTS — order matters
 ═══════════════════════════════════════════════════════ -->
 <script src="/static/js/app.js"></script>
-<script src="/static/js/analyze.js"></script>
 <script src="/static/js/dashboard.js"></script>
+<script src="/static/js/analyze.js"></script>
 <script src="/static/js/reports.js"></script>
 <script src="/static/js/report.js"></script>
+<script src="/static/js/threats.js"></script>
+<script src="/static/js/urls.js"></script>
+<script src="/static/js/attachments.js"></script>
+<script src="/static/js/intelligence.js"></script>
+<script src="/static/js/timeline.js"></script>
+<script src="/static/js/policies.js"></script>
+<script src="/static/js/system_status.js"></script>
 <script src="/static/js/about.js"></script>
 
 </body>

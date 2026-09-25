@@ -1,0 +1,144 @@
+warning: in the working copy of 'app.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'db.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'models.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/css/app.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/index.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/js/about.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/js/analyze.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/js/app.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/js/dashboard.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/js/report.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'static/js/reports.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/__pycache__/app.cpython-313.pyc b/__pycache__/app.cpython-313.pyc[m
+[1mindex e9a216b..72b98e3 100644[m
+Binary files a/__pycache__/app.cpython-313.pyc and b/__pycache__/app.cpython-313.pyc differ
+[1mdiff --git a/__pycache__/db.cpython-313.pyc b/__pycache__/db.cpython-313.pyc[m
+[1mindex 782e36a..7f6e086 100644[m
+Binary files a/__pycache__/db.cpython-313.pyc and b/__pycache__/db.cpython-313.pyc differ
+[1mdiff --git a/__pycache__/models.cpython-313.pyc b/__pycache__/models.cpython-313.pyc[m
+[1mindex 949eeff..4e50962 100644[m
+Binary files a/__pycache__/models.cpython-313.pyc and b/__pycache__/models.cpython-313.pyc differ
+[1mdiff --git a/app.py b/app.py[m
+[1mindex 022b89e..fb0a46b 100644[m
+[1m--- a/app.py[m
+[1m+++ b/app.py[m
+[36m@@ -1,5 +1,6 @@[m
+ """[m
+ app.py — FastAPI entry point for MailGuard AI.[m
+[32m+[m[32mPre-Delivery Email Security Gateway + Threat Intelligence + SOC Platform.[m
+ [m
+ Start with:[m
+     python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload[m
+[36m@@ -11,11 +12,12 @@[m [mfrom __future__ import annotations[m
+ import os[m
+ import uuid[m
+ import logging[m
+[31m-from datetime import datetime, timezone[m
+[32m+[m[32mfrom datetime import datetime, timezone, timedelta[m
+ from pathlib import Path[m
+[31m-from typing import List[m
+[32m+[m[32mfrom typing import List, Optional, Dict, Any[m
+[32m+[m[32mimport re[m
+ [m
+[31m-from fastapi import FastAPI, HTTPException, Request[m
+[32m+[m[32mfrom fastapi import FastAPI, HTTPException, Request, Query[m
+ from fastapi.middleware.cors import CORSMiddleware[m
+ from fastapi.responses import JSONResponse, FileResponse[m
+ try:[m
+[36m@@ -57,15 +59,14 @@[m [masync def lifespan(app: FastAPI):[m
+ [m
+ app = FastAPI([m
+     title="MailGuard AI",[m
+[31m-    description="AI-Powered Email Threat Detection, Geolocation & Forensic Intelligence Platform",[m
+[31m-    version="1.0.0",[m
+[32m+[m[32m    description="AI-Powered Pre-Delivery Email Security Gateway & SOC Intelligence Platform",[m
+[32m+[m[32m    version="2.0.0",[m
+     docs_url="/api/docs",[m
+     redoc_url="/api/redoc",[m
+     lifespan=lifespan,[m
+ )[m
+ [m
+ # CORS — only needed if you later separate frontend/backend.[m
+[31m-# With the single-origin setup this is a no-op safety net.[m
+ app.add_middleware([m
+     CORSMiddleware,[m
+     allow_origins=["*"],[m
+[36m@@ -87,9 +88,11 @@[m [masync def _global_exc(request: Request, exc: Exception):[m
+     )[m
+ [m
+ [m
+[31m-# ---------------------------------------------------------------------------[m
+[32m+[m[32m# ===========================================================================[m
+ # API Endpoints[m
+[31m-# ---------------------------------------------------------------------------[m
+[32m+[m[32m# ===========================================================================[m
+[32m+[m
+[32m+[m[32m# ── System ──────────────────────────────────────────────────────────────────[m
+ [m
+ @app.get("/api/health", response_model=HealthResponse, tags=["System"])[m
+ def health():[m
+[36m@@ -107,6 +110,59 @@[m [mdef health():[m
+     }[m
+ [m
+ [m
+[32m+[m[32m@app.get("/api/system/status", tags=["System"])[m
+[32m+[m[32mdef system_status():[m
+[32m+[m[32m    """Extended system status for the System Status page."""[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        total = db.count_emails()[m
+[32m+[m[32m        db_status = "healthy"[m
+[32m+[m[32m    except Exception:[m
+[32m+[m[32m        total = 0[m
+[32m+[m[32m        db_status = "error"[m
+[32m+[m
+[32m+[m[32m    return {[m
+[32m+[m[32m        "status": "operational",[m
+[32m+[m[32m        "version": "2.0.0",[m
+[32m+[m[32m        "components": {[m
+[32m+[m[32m            "email_gateway": {"status": "active", "description": "Pre-delivery email interception"},[m
+[32m+[m[32m            "threat_detector": {"status": "active", "description": "Multi-pillar heuristic engine"},[m
+[32m+[m[32m            "url_analyzer": {"status": "active", "description": "URL reputation and threat analysis"},[m
+[32m+[m[32m            "attachment_analyzer": {"status": "active", "description": "Static file analysis [PROTOTYPE]"},[m
+[32m+[m[32m            "qr_analyzer": {"status": "prototype", "description": "QR code extraction architecture ready [PROTOTYPE]"},[m
+[32m+[m[32m            "geolocation": {"status": "active", "description": "IP geolocation via ip-api.com"},[m
+[32m+[m[32m            "database": {"status": db_status, "description": f"SQLite — {total} emails stored"},[m
+[32m+[m[32m            "bec_detector": {"status": "active", "description": "Business Email Compromise detection"},[m
+[32m+[m[32m            "threat_intelligence": {"status": "local", "description": "Local IOC + heuristic intelligence [LOCAL]"},[m
+[32m+[m[32m            "policy_engine": {"status": "active", "description": "Configurable security policy rules"},[m
+[32m+[m[32m        },[m
+[32m+[m[32m        "analysis_pipeline": [[m
+[32m+[m[32m            "EMAIL RECEIVED",[m
+[32m+[m[32m            "HEADER PARSING",[m
+[32m+[m[32m            "SPF / DKIM / DMARC CHECK",[m
+[32m+[m[32m            "SENDER ANALYSIS",[m
+[32m+[m[32m            "DOMAIN ANALYSIS",[m
+[32m+[m[32m            "URL ANALYSIS",[m
+[32m+[m[32m            "ATTACHMENT CHECK",[m
+[32m+[m[32m            "BEC DETECTION",[m
+[32m+[m[32m            "CREDENTIAL PHISHING DETECTION",[m
+[32m+[m[32m            "BEHAVIOURAL ANALYSIS",[m
+[32m+[m[32m            "THREAT INTELLIGENCE LOOKUP",[m
+[32m+[m[32m            "RISK SCORE CALCULATION",[m
+[32m+[m[32m            "POLICY ENGINE",[m
+[32m+[m[32m            "DELIVER / QUARANTINE / BLOCK",[m
+[32m+[m[32m            "FORENSIC REPORT GENERATED",[m
+[32m+[m[32m        ],[m
+[32m+[m[32m        "notes": [[m
+[32m+[m[32m            "Attachment sandbox: STATIC ANALYSIS only (no live execution)",[m
+[32m+[m[32m            "QR decode: Architecture ready, library integration pending",[m
+[32m+[m[32m            "Threat intelligence: Local heuristic rules (no external feed connected)",[m
+[32m+[m[32m            "IP geolocation: Approximate location only — not physical attacker location",[m
+[32m+[m[32m        ][m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m
+[32m+[m[32m# ── Core Email Analysis ──────────────────────────────────────────────────────[m
+[32m+[m
+ @app.post("/api/analyze", tags=["Analysis"])[m
+ def analyze(req: AnalyzeRequest):[m
+     """[m
+[36m@@ -126,6 +182,12 @@[m [mdef analyze(req: AnalyzeRequest):[m
+     # Geolocation[m
+     geo = get_geolocation(req.sender_ip or "")[m
+ [m
+[32m+[m
