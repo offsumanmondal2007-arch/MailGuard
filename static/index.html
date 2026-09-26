@@ -4,15 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MailGuard AI — Pre-Delivery Email Security Gateway</title>
-  <meta name="description" content="MailGuard AI is a modern pre-delivery email security gateway with threat intelligence, forensic analysis, and SOC investigation capabilities." />
+  <meta name="description" content="MailGuard AI is a modern pre-delivery email security gateway with threat intelligence, forensic analysis, and SOC investigation capabilities. Academic research prototype — SIH 2026." />
+  <!-- Robots: noindex because this is a local academic prototype, not a public search-indexed site -->
+  <meta name="robots" content="noindex, nofollow" />
+  <!-- Color scheme hint for browser chrome -->
+  <meta name="color-scheme" content="dark" />
+  <!-- Google Fonts — third-party, see Cookie Policy (#cookies) for disclosure -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="/static/css/app.css" />
-  <!-- Chart.js from CDN -->
+  <!-- Chart.js from jsDelivr CDN — see Cookie Policy for third-party disclosure -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
+
+<!-- Skip navigation link for keyboard / screen-reader accessibility (WCAG 2.1 SC 2.4.1) -->
+<a href="#app-root" class="skip-link">Skip to main content</a>
 
 <!-- ═══════════════════════════════════════════════════════
      APP SHELL — Sidebar Layout
@@ -20,10 +28,10 @@
 <div class="app-shell" id="app-shell">
 
   <!-- ── SIDEBAR ───────────────────────────────────────── -->
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="Application sidebar">
     <!-- Brand -->
     <div class="sidebar-brand">
-      <div class="sidebar-brand-icon">🛡</div>
+      <div class="sidebar-brand-icon" aria-hidden="true">🛡</div>
       <div class="sidebar-brand-text">
         <div class="sidebar-brand-name">MailGuard <span class="brand-ai">AI</span></div>
         <div class="sidebar-brand-sub">Email Security Gateway</div>
@@ -31,64 +39,82 @@
     </div>
 
     <!-- System status indicator -->
-    <div class="sidebar-status" id="sidebar-status">
-      <span class="status-dot" id="status-dot"></span>
+    <div class="sidebar-status" id="sidebar-status" aria-live="polite" aria-label="System status">
+      <span class="status-dot" id="status-dot" aria-hidden="true"></span>
       <span id="status-text">Connecting…</span>
     </div>
 
     <!-- Navigation -->
-    <nav class="sidebar-nav" id="main-nav">
-      <div class="nav-section-label">MONITORING</div>
-      <a href="#dashboard" class="nav-link" data-page="dashboard" id="nav-dashboard">
-        <span class="nav-icon">📊</span>
+    <nav class="sidebar-nav" id="main-nav" aria-label="Main navigation">
+      <div class="nav-section-label" aria-hidden="true">MONITORING</div>
+      <a href="#dashboard" class="nav-link" data-page="dashboard" id="nav-dashboard" aria-label="Dashboard">
+        <span class="nav-icon" aria-hidden="true">📊</span>
         <span class="nav-label">Dashboard</span>
       </a>
-      <a href="#threats" class="nav-link" data-page="threats" id="nav-threats">
-        <span class="nav-icon">🚨</span>
+      <a href="#threats" class="nav-link" data-page="threats" id="nav-threats" aria-label="Threat Feed">
+        <span class="nav-icon" aria-hidden="true">🚨</span>
         <span class="nav-label">Threat Feed</span>
-        <span class="nav-badge" id="threat-badge" style="display:none">0</span>
+        <span class="nav-badge" id="threat-badge" style="display:none" aria-label="threat count">0</span>
       </a>
 
-      <div class="nav-section-label">ANALYSIS</div>
-      <a href="#analyze" class="nav-link" data-page="analyze" id="nav-analyze">
-        <span class="nav-icon">🔍</span>
+      <div class="nav-section-label" aria-hidden="true">ANALYSIS</div>
+      <a href="#analyze" class="nav-link" data-page="analyze" id="nav-analyze" aria-label="Email Scanner">
+        <span class="nav-icon" aria-hidden="true">🔍</span>
         <span class="nav-label">Email Scanner</span>
       </a>
-      <a href="#reports" class="nav-link" data-page="reports" id="nav-reports">
-        <span class="nav-icon">📋</span>
+      <a href="#reports" class="nav-link" data-page="reports" id="nav-reports" aria-label="Email Investigation">
+        <span class="nav-icon" aria-hidden="true">📋</span>
         <span class="nav-label">Email Investigation</span>
       </a>
-      <a href="#urls" class="nav-link" data-page="urls" id="nav-urls">
-        <span class="nav-icon">🔗</span>
+      <a href="#urls" class="nav-link" data-page="urls" id="nav-urls" aria-label="URL Analysis">
+        <span class="nav-icon" aria-hidden="true">🔗</span>
         <span class="nav-label">URL Analysis</span>
       </a>
-      <a href="#attachments" class="nav-link" data-page="attachments" id="nav-attachments">
-        <span class="nav-icon">📎</span>
+      <a href="#attachments" class="nav-link" data-page="attachments" id="nav-attachments" aria-label="Attachment Analysis">
+        <span class="nav-icon" aria-hidden="true">📎</span>
         <span class="nav-label">Attachment Analysis</span>
       </a>
 
-      <div class="nav-section-label">INTELLIGENCE</div>
-      <a href="#intelligence" class="nav-link" data-page="intelligence" id="nav-intelligence">
-        <span class="nav-icon">🧠</span>
+      <div class="nav-section-label" aria-hidden="true">INTELLIGENCE</div>
+      <a href="#intelligence" class="nav-link" data-page="intelligence" id="nav-intelligence" aria-label="Threat Intelligence">
+        <span class="nav-icon" aria-hidden="true">🧠</span>
         <span class="nav-label">Threat Intelligence</span>
       </a>
-      <a href="#timeline" class="nav-link" data-page="timeline" id="nav-timeline">
-        <span class="nav-icon">⏱</span>
+      <a href="#timeline" class="nav-link" data-page="timeline" id="nav-timeline" aria-label="Forensic Timeline">
+        <span class="nav-icon" aria-hidden="true">⏱</span>
         <span class="nav-label">Forensic Timeline</span>
       </a>
 
-      <div class="nav-section-label">CONFIGURATION</div>
-      <a href="#policies" class="nav-link" data-page="policies" id="nav-policies">
-        <span class="nav-icon">⚙</span>
+      <div class="nav-section-label" aria-hidden="true">CONFIGURATION</div>
+      <a href="#policies" class="nav-link" data-page="policies" id="nav-policies" aria-label="Security Policies">
+        <span class="nav-icon" aria-hidden="true">⚙</span>
         <span class="nav-label">Security Policies</span>
       </a>
-      <a href="#status" class="nav-link" data-page="status" id="nav-status">
-        <span class="nav-icon">🖥️</span>
+      <a href="#status" class="nav-link" data-page="status" id="nav-status" aria-label="System Status">
+        <span class="nav-icon" aria-hidden="true">🖥️</span>
         <span class="nav-label">System Status</span>
       </a>
-      <a href="#about" class="nav-link" data-page="about" id="nav-about">
-        <span class="nav-icon">ℹ</span>
+      <a href="#about" class="nav-link" data-page="about" id="nav-about" aria-label="About this project">
+        <span class="nav-icon" aria-hidden="true">ℹ</span>
         <span class="nav-label">About</span>
+      </a>
+
+      <div class="nav-section-label" aria-hidden="true">LEGAL</div>
+      <a href="#privacy" class="nav-link" data-page="privacy" id="nav-privacy" aria-label="Privacy Policy">
+        <span class="nav-icon" aria-hidden="true">🔒</span>
+        <span class="nav-label">Privacy Policy</span>
+      </a>
+      <a href="#terms" class="nav-link" data-page="terms" id="nav-terms" aria-label="Terms and Conditions">
+        <span class="nav-icon" aria-hidden="true">📋</span>
+        <span class="nav-label">Terms &amp; Conditions</span>
+      </a>
+      <a href="#cookies" class="nav-link" data-page="cookies" id="nav-cookies" aria-label="Cookie Policy">
+        <span class="nav-icon" aria-hidden="true">🍪</span>
+        <span class="nav-label">Cookie Policy</span>
+      </a>
+      <a href="#refund" class="nav-link" data-page="refund" id="nav-refund" aria-label="Refund Policy">
+        <span class="nav-icon" aria-hidden="true">💰</span>
+        <span class="nav-label">Refund Policy</span>
       </a>
     </nav>
 
@@ -104,31 +130,31 @@
 
     <!-- Top security status bar -->
     <header class="topbar" id="topbar">
-      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">☰</button>
-      <div class="topbar-breadcrumb" id="topbar-breadcrumb">
+      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar navigation" aria-controls="sidebar" aria-expanded="true">☰</button>
+      <div class="topbar-breadcrumb" id="topbar-breadcrumb" aria-label="Breadcrumb navigation">
         <span class="breadcrumb-item">MailGuard AI</span>
-        <span class="breadcrumb-sep">›</span>
-        <span class="breadcrumb-page" id="breadcrumb-page">Dashboard</span>
+        <span class="breadcrumb-sep" aria-hidden="true">›</span>
+        <span class="breadcrumb-page" id="breadcrumb-page" aria-current="page">Dashboard</span>
       </div>
       <div class="topbar-right">
-        <div class="topbar-pill" id="gateway-pill">
-          <span class="pulse-dot"></span>
+        <div class="topbar-pill" id="gateway-pill" aria-label="Gateway status: Active">
+          <span class="pulse-dot" aria-hidden="true"></span>
           <span>Gateway Active</span>
         </div>
-        <div class="topbar-pill" id="detector-pill">
-          <span class="pulse-dot pulse-blue"></span>
+        <div class="topbar-pill" id="detector-pill" aria-label="Detector status: Ready">
+          <span class="pulse-dot pulse-blue" aria-hidden="true"></span>
           <span>Detector Ready</span>
         </div>
-        <button class="btn btn-primary btn-sm" id="quick-analyze-btn" onclick="window.APP.navigate('#analyze')">
+        <button class="btn btn-primary btn-sm" id="quick-analyze-btn" onclick="window.APP.navigate('#analyze')" aria-label="Open Email Scanner to analyze a new email">
           + Analyze Email
         </button>
       </div>
     </header>
 
     <!-- Page content -->
-    <main id="app-root">
-      <div class="loading-splash">
-        <div class="spinner-ring"></div>
+    <main id="app-root" role="main" aria-label="Page content" tabindex="-1">
+      <div class="loading-splash" role="status" aria-live="polite">
+        <div class="spinner-ring" aria-hidden="true"></div>
         <p>Loading MailGuard AI…</p>
       </div>
     </main>
@@ -137,8 +163,8 @@
 
 </div><!-- /app-shell -->
 
-<!-- Toast notifications -->
-<div id="toast-container" aria-live="polite"></div>
+<!-- Toast notifications — aria-live so screen readers announce them -->
+<div id="toast-container" aria-live="polite" aria-atomic="true" role="status"></div>
 
 <!-- ═══════════════════════════════════════════════════════
      SCRIPTS — order matters
@@ -156,6 +182,10 @@
 <script src="/static/js/policies.js"></script>
 <script src="/static/js/system_status.js"></script>
 <script src="/static/js/about.js"></script>
+<!-- Legal & compliance pages -->
+<script src="/static/js/legal.js"></script>
+<!-- Cookie notice (must load last, after APP is initialised) -->
+<script src="/static/js/cookie-consent.js"></script>
 
 </body>
 </html>

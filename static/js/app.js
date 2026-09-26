@@ -163,6 +163,11 @@ const PAGE_TITLES = {
   policies:     'Security Policies',
   status:       'System Status',
   about:        'About',
+  // Legal & compliance pages
+  privacy:  'Privacy Policy',
+  terms:    'Terms & Conditions',
+  cookies:  'Cookie Policy',
+  refund:   'Refund Policy',
 };
 
 function getInitialRoute() {
@@ -246,7 +251,9 @@ function initSidebarToggle() {
   if (!toggleBtn || !sidebar) return;
 
   toggleBtn.addEventListener('click', () => {
-    sidebar.classList.toggle('collapsed');
+    const collapsed = sidebar.classList.toggle('collapsed');
+    // Update aria-expanded for screen reader accessibility (WCAG 4.1.2)
+    toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   });
 }
 

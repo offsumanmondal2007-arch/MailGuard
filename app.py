@@ -67,12 +67,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — only needed if you later separate frontend/backend.
+# CORS — restricted to localhost and loopback origins only.
+# For a local academic prototype, wildcard (*) is not appropriate.
+# If deploying to a specific domain, add that origin here explicitly.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 _detector = ThreatDetector()
@@ -83,9 +90,10 @@ _detector = ThreatDetector()
 @app.exception_handler(Exception)
 async def _global_exc(request: Request, exc: Exception):
     log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    # Do NOT expose exception detail to the browser — information disclosure risk.
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": str(exc)},
+        content={"error": "Internal server error"},
     )
 
 

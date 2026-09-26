@@ -103,17 +103,26 @@
 </div>
 
 <!-- Disclaimer -->
-<div class="disclaimer-box">
-  <div class="disclaimer-title">⚠ Academic Research Prototype — Disclaimer</div>
+<div class="disclaimer-box" role="note" aria-label="Project disclaimer">
+  <div class="disclaimer-title">&#9888; Academic Research Prototype — Disclaimer</div>
   <ul style="list-style:none;display:flex;flex-direction:column;gap:0.4rem">
-    <li>🔬 This is an <strong>academic research project</strong> for SIH 2026. Not a production security product.</li>
-    <li>⚠ <strong>No file sandbox</strong> — attachment analysis is static metadata inspection only. Files are not executed.</li>
-    <li>📡 <strong>No live threat feeds</strong> — threat intelligence is derived from locally analysed emails only.</li>
-    <li>🌍 <strong>IP geolocation is approximate</strong> — it shows the ISP location, NOT the attacker's physical location.</li>
-    <li>🤖 <strong>No real ML model</strong> — threat scoring uses expert-designed heuristic rules, labelled as "Heuristic ML Layer".</li>
-    <li>🔒 <strong>No link following</strong> — URL analysis checks patterns and heuristics only; URLs are not fetched or browsed.</li>
-    <li>⚙ <strong>Policy engine is in-memory</strong> — policy changes reset on server restart.</li>
+    <li>&#128300; This is an <strong>academic research project</strong> for SIH 2026. Not a production security product.</li>
+    <li>&#9888; <strong>No file sandbox</strong> — attachment analysis is static metadata inspection only. Files are not executed.</li>
+    <li>&#128225; <strong>No live threat feeds</strong> — threat intelligence is derived from locally analysed emails only.</li>
+    <li>&#127758; <strong>IP geolocation is approximate</strong> — it shows the ISP location, NOT the attacker's physical location.</li>
+    <li>&#129302; <strong>No real ML model</strong> — threat scoring uses expert-designed heuristic rules, labelled as "Heuristic ML Layer".</li>
+    <li>&#128274; <strong>No link following</strong> — URL analysis checks patterns and heuristics only; URLs are not fetched or browsed.</li>
+    <li>&#9881; <strong>Policy engine is in-memory</strong> — policy changes reset on server restart.</li>
+    <li>&#128683; <strong>No cookies or tracking</strong> — this platform sets no first-party cookies. See <a href="#cookies">Cookie Policy</a>.</li>
+    <li>&#128683; <strong>No fake reviews or unsupported claims</strong> — all stated capabilities reflect the actual prototype implementation.</li>
   </ul>
+  <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid rgba(245,158,11,0.2);font-size:0.76rem;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:0.75rem">
+    <strong style="color:var(--text-secondary)">Legal:</strong>
+    <a href="#privacy">Privacy Policy</a>
+    <a href="#terms">Terms &amp; Conditions</a>
+    <a href="#cookies">Cookie Policy</a>
+    <a href="#refund">Refund Policy</a>
+  </div>
 </div>`;
     },
   });
